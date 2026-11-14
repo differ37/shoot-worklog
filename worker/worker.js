@@ -60,7 +60,14 @@ async function setStatus(env, lineIndex, headerRaw, status) {
   if (memo.lines[lineIndex] !== headerRaw) return { ok: false, reason: 'changed' };
   const m = memo.map.find(x => lineIndex >= x.start && lineIndex < x.start + x.count);
   const block = memo.blocks.find(b => b.id === m.id);
-  const close = headerRaw.indexOf(')', headerRaw.indexOf('('));
+  // "9/22(화)미결" 처럼 괄호 뒤 / "11/12 목 미결" 처럼 요일 뒤(촬영 브리핑 업무 공유 양식)
+  let close = headerRaw.indexOf(')', headerRaw.indexOf('('));
+  if (!headerRaw.includes('(')) {
+    const m = headerRaw.match(/^\s*\d{1,2}\s*\/\s*\d{1,2}(?:\s*[~,]\s*\d{1,2})*\s*[일월화수목금토]+(?:요일)?/);
+    if (!m) return { ok: false, reason: 'changed' };
+    close = m[0].length - 1;
+    status = ' ' + status;
+  }
   const newLine = headerRaw.slice(0, close + 1) + status;
   // 블록 안에서 해당 줄의 문자 위치
   const blockLines = textOf(block).replace(/\r/g, '').split('\n');
@@ -87,6 +94,27 @@ async function setStatus(env, lineIndex, headerRaw, status) {
   return { ok: true, line: newLine };
 }
 
+// 촬영 브리핑의 '업무 공유' → 페이지 맨 아래에 한 줄씩 기록.
+// replace: 예전에 기록한 블록 {ids, lines} — 노션에서 손대지 않았으면 지우고 새로 기록(같은 촬영 중복 방지),
+// 이미 고쳤으면 409 changed. 블록이 지워졌으면 그냥 새로 기록.
+const para = t => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: t ? [{ type: 'text', text: { content: t } }] : [] } });
+async function appendLines(env, lines, replace) {
+  if (replace?.ids?.length) {
+    const olds = [];
+    for (const id of replace.ids) {
+      try { olds.push(await notion(env, `/blocks/${id}`)); } catch (_) { olds.push(null); }
+    }
+    const alive = olds.filter(b => b && !b.archived && !b.in_trash);
+    if (alive.length) {
+      const now = alive.map(textOf).filter(Boolean).join('\n');
+      if (alive.length !== olds.length || now !== (replace.lines || []).filter(Boolean).join('\n')) return { ok: false, reason: 'changed' };
+      for (const b of alive) await notion(env, `/blocks/${b.id}`, { method: 'DELETE' });
+    }
+  }
+  const r = await notion(env, `/blocks/${env.PAGE_ID}/children`, { method: 'PATCH', body: JSON.stringify({ children: ['', ...lines].map(para) }) });
+  return { ok: true, ids: r.results.map(b => b.id), lines: ['', ...lines] };
+}
+
 export default {
   async fetch(req, env) {
     const h = cors(req, env);
@@ -108,6 +136,13 @@ export default {
         const b = await req.json();
         if (!['미결', '결제완료'].includes(b.status)) return json({ error: 'bad status' }, 400, h);
         const r = await setStatus(env, +b.lineIndex, String(b.headerRaw || ''), b.status);
+        return json(r, r.ok ? 200 : 409, h);
+      }
+      if (req.method === 'POST' && url.pathname === '/append') {
+        const b = await req.json();
+        const lines = (Array.isArray(b.lines) ? b.lines : []).map(x => String(x).slice(0, 1900)).slice(0, 30);
+        if (!lines.some(x => x.trim())) return json({ error: 'empty' }, 400, h);
+        const r = await appendLines(env, lines, b.replace);
         return json(r, r.ok ? 200 : 409, h);
       }
       return json({ error: 'not found' }, 404, h);

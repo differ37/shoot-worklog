@@ -4,6 +4,8 @@
 
   const WD = '일월화수목금토';
   const HEADER = /^\s*(\d{1,2})\s*\/\s*(\d{1,2})([^()\n]*)\(([^)]*)\)\s*(.*)$/;
+  // 촬영 브리핑 '업무 공유'로 기록되는 간단한 헤더: "11/12 목", "11/12 목 결제완료", "9/22~24 화수목"
+  const HEADER2 = /^\s*(\d{1,2})\s*\/\s*(\d{1,2})((?:\s*[~,]\s*\d{1,2})*)\s*([일월화수목금토]+)(?:요일)?(?:\s+(미결|미입금|미정산|대기|부분\S*|결제완료|입금완료|정산완료|완료|완결|결제|입금))?\s*$/;
   const YEAR_LINE = /^\s*(20\d{2})\s*년?\s*$/;
   const PHONE = /01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}/;
   const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
@@ -95,10 +97,11 @@
     lines.forEach((line, i) => {
       const ym = line.match(YEAR_LINE);
       if (ym) { ctx.explicitYear = +ym[1]; cur = null; return; }
-      const h = line.match(HEADER);
+      const h = line.match(HEADER) || line.match(HEADER2);
       if (h) {
         cur = { lineIndex: i, headerRaw: line, body: [] };
         cur.h = h;
+        cur.compact = !HEADER.test(line);
         entries.push(cur);
         return;
       }
@@ -148,7 +151,8 @@
       };
 
       const body = e.body.map(b => b.text).filter(t => t.trim() !== '');
-      let titleDone = false, crewChecked = false;
+      // 간단한 헤더(업무 공유 양식)에는 촬영감독·퍼스트 줄이 없다
+      let titleDone = false, crewChecked = !!e.compact;
       const loose = [];
 
       body.forEach((raw, bi) => {
@@ -248,6 +252,8 @@
         loose.push(t);
       });
 
+      // 업무 공유 양식: 이동 경로 한 줄 뒤의 글은 비고
+      if (e.compact && loose.length > 1) entry.notes.push(...loose.splice(1));
       entry.places = entry.days.length ? entry.days.map(x => x.place) : loose.map(normPlace);
       if (entry.days.length) {
         if (!entry.days.some(x => x.start != null) && (entry.start != null || entry.end != null) && entry.days.length === 1) {
@@ -306,10 +312,13 @@
   function setStatus(text, lineIndex, newStatus) {
     const lines = String(text).replace(/\r/g, '').split('\n');
     const line = lines[lineIndex];
-    const h = line && line.match(HEADER);
-    if (!h) return text;
-    const close = line.indexOf(')', line.indexOf('('));
-    lines[lineIndex] = line.slice(0, close + 1) + newStatus;
+    if (!line) return text;
+    if (HEADER.test(line)) {
+      const close = line.indexOf(')', line.indexOf('('));
+      lines[lineIndex] = line.slice(0, close + 1) + newStatus;
+    } else if (HEADER2.test(line)) {
+      lines[lineIndex] = line.replace(HEADER2, (all, m, d, ex, wd) => all.slice(0, all.indexOf(wd) + wd.length)) + ' ' + newStatus;
+    }
     return lines.join('\n');
   }
 
