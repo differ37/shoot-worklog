@@ -339,7 +339,7 @@
     if (state.sort === 'amt') es.sort((a, b) => (b.amount || 0) - (a.amount || 0));
 
     const box = $('#jobList');
-    if (!state.entries.length) { box.innerHTML = `<div class="card empty">아직 기록이 없어요. <b>메모 편집</b> 탭에서 메모를 붙여넣어 주세요.</div>`; return; }
+    if (!state.entries.length) { box.innerHTML = `<div class="card empty">아직 기록이 없어요. ${SYNC ? '노션 페이지에 적어주세요.' : '<b>메모 편집</b> 탭에서 메모를 붙여넣어 주세요.'}</div>`; return; }
     if (!es.length) { box.innerHTML = `<div class="card empty">조건에 맞는 작업이 없어요</div>`; return; }
     box.innerHTML = es.map(jobCard).join('');
   }
@@ -456,19 +456,21 @@
     if (!r.ok && r.status !== 409) throw new Error(d.error || '서버 오류');
     return d;
   }
-  async function pull(quiet) {
-    if (!pass) { showLock(); return; }
-    if (pulling) return;
+  async function pull(quiet, force) {
+    if (!pass) { showLock(); return false; }
+    if (pulling && !force) return false;
     pulling = true;
     if (!quiet) $('#syncInfo').innerHTML = '<span class="spin">↻</span> 불러오는 중';
     try {
       const d = await api('/memo');
-      pageUrl = d.pageUrl; $('#btnNotion').href = pageUrl;
+      pageUrl = d.pageUrl; $('#btnNotion').href = pageUrl; $('#btnNotionTop').href = pageUrl;
       lastPull = new Date();
       if (d.text !== state.text) setText(d.text);
       syncInfo();
+      return true;
     } catch (err) {
       if (err.message !== 'auth') $('#syncInfo').textContent = '불러오기 실패 (인터넷 확인) · 저장된 내용 표시 중';
+      return false;
     } finally { pulling = false; }
   }
   function syncInfo() {
@@ -587,6 +589,7 @@
   switchTab(startTab);
   if (SYNC) {
     document.body.classList.add('sync');
+    if (startTab === 'memo') switchTab('dash');
     $('#memo').readOnly = true;
     $('#lockForm').addEventListener('submit', async ev => {
       ev.preventDefault();
@@ -596,7 +599,7 @@
         const d = await api('/memo');
         try { localStorage.setItem(PASS_KEY, pass); } catch (_) {}
         $('#lock').hidden = true; $('#lockPass').value = '';
-        pageUrl = d.pageUrl; $('#btnNotion').href = pageUrl; lastPull = new Date();
+        pageUrl = d.pageUrl; $('#btnNotion').href = pageUrl; $('#btnNotionTop').href = pageUrl; lastPull = new Date();
         setText(d.text); syncInfo();
       } catch (err) { if (err.message !== 'auth') $('#lockErr').textContent = '서버에 연결할 수 없어요'; }
     });
@@ -606,6 +609,15 @@
       pass = ''; setText('', { save: false }); showLock();
     });
     $('#btnRefresh').addEventListener('click', () => pull());
+    $('#btnSync').addEventListener('click', async () => {
+      const b = $('#btnSync');
+      if (b.classList.contains('busy')) return;
+      b.classList.add('busy');
+      const ok = await pull(false, true);
+      b.classList.remove('busy');
+      if (ok) { b.classList.add('ok'); setTimeout(() => b.classList.remove('ok'), 1500); toast(`노션 최신 내용으로 동기화됨 · ${state.entries.length}건`); }
+      else toast('동기화 실패 — 인터넷 연결을 확인해 주세요');
+    });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(true); });
     window.addEventListener('focus', () => pull(true));
     setInterval(() => { if (!document.hidden) pull(true); }, 30000);

@@ -87,6 +87,7 @@ small { font-size: 12px; }
 .sub { margin: 0; font-size: 12px; color: var(--text-3); }
 .tabs { display: flex; background: var(--surface-2); border-radius: 10px; padding: 3px; }
 .tabs button {
+  justify-content: center; text-align: center;
   border: 0; background: none; padding: 7px 14px; border-radius: 8px; cursor: pointer;
   color: var(--text-2); font-weight: 600; font-size: 14px;
 }
@@ -310,3 +311,18 @@ a.btn { text-decoration: none; }
 .lock-box .err { color: var(--unpaid); font-size: 13px; min-height: 18px; }
 .spin { display: inline-block; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.hdr-actions { display: flex; gap: 6px; align-items: center; }
+.icon-btn {
+  width: 36px; height: 36px; padding: 0; border-radius: 10px; justify-content: center;
+  display: inline-flex; align-items: center; color: var(--text-2);
+  background: var(--surface); border: 1px solid var(--line); text-decoration: none;
+}
+.icon-btn:hover { color: var(--text); border-color: var(--text-3); }
+.icon-btn.busy svg { animation: spin .8s linear infinite; }
+.icon-btn.ok { color: var(--paid); }
+@media (min-width: 601px) { .top .tabs { margin-left: auto; } }
+@media (max-width: 600px) {
+  .top .brand { flex: 1; min-width: 0; }
+  .top .tabs { order: 3; }
+}
