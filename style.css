@@ -294,3 +294,19 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
   .calendar .ev.u { background: var(--unpaid); }
   #memo { height: 50vh; }
 }
+
+/* 노션 동기화 */
+body:not(.sync) .sync-only, body.sync .local-only { display: none !important; }
+body.sync #memo { background: var(--surface-2); color: var(--text-2); }
+a.btn { text-decoration: none; }
+.foot a { color: var(--text-3); }
+.lock { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.lock-box { width: 100%; max-width: 320px; text-align: center; display: flex; flex-direction: column; gap: 10px; }
+.lock-box .logo { font-size: 44px; }
+.lock-box h2 { font-size: 20px; }
+.lock-box p { margin: 0; }
+.lock-box input { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface); font-size: 16px; text-align: center; }
+.lock-box button { justify-content: center; padding: 12px; font-size: 15px; border-radius: 10px; }
+.lock-box .err { color: var(--unpaid); font-size: 13px; min-height: 18px; }
+.spin { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

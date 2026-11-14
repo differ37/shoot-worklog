@@ -379,7 +379,7 @@
         <div><div class="amt">${e.amount != null ? won(e.amount) + '원' : '금액 없음'}</div>
         <div class="src">${e.amountSource ? e.amountSource + ' 기준' : ''}${e.status === 'partial' ? ` · ${won(e.received)}원 받음` : ''}</div></div>
         <div class="acts">
-          <button class="ghost" data-edit="${e.id}">메모 수정</button>
+          <button class="ghost" data-edit="${e.id}">${SYNC ? '노션 열기' : '메모 수정'}</button>
           ${paid ? `<button class="ghost" data-unpay="${e.id}">미결로</button>` : `<button class="btn-pay" data-pay="${e.id}">입금 확인</button>`}
         </div>
       </div>
@@ -421,11 +421,65 @@
     toastTimer = setTimeout(() => { t.hidden = true; }, 4000);
   }
 
-  function changeStatus(id, to) {
+  async function changeStatus(id, to) {
     const e = state.entries[id];
     const before = state.text;
+    const msg = `“${label(e)}” ${to === '미결' ? '미결로 변경' : '입금 완료 처리'}`;
     setText(P.setStatus(state.text, e.lineIndex, to));
-    toast(`“${label(e)}” ${to === '미결' ? '미결로 변경' : '입금 완료 처리'}`, () => setText(before));
+    if (!SYNC) { toast(msg, () => setText(before)); return; }
+    try {
+      const r = await api('/status', { method: 'POST', body: JSON.stringify({ lineIndex: e.lineIndex, headerRaw: e.headerRaw, status: to }) });
+      if (!r.ok) throw new Error(r.reason === 'changed' ? '노션 내용이 바뀌어서 다시 불러왔어요. 한 번 더 눌러주세요' : '실패');
+      toast(msg + ' · 노션에도 반영됨', () => changeStatusByHeader(P.setStatus(e.headerRaw, 0, to), e.lineIndex, to === '미결' ? '결제완료' : '미결'));
+    } catch (err) {
+      toast(err.message === '실패' ? '노션 반영 실패 — 다시 불러올게요' : err.message);
+      pull();
+    }
+  }
+  async function changeStatusByHeader(headerRaw, lineIndex, to) {
+    setText(P.setStatus(state.text, lineIndex, to));
+    try { await api('/status', { method: 'POST', body: JSON.stringify({ lineIndex, headerRaw, status: to }) }); toast('되돌렸어요'); }
+    catch (_) { pull(); }
+  }
+
+  // ---------- 노션 동기화 ----------
+  const SYNC = !!(window.WORKLOG_API && !/WORKERS_SUBDOMAIN/.test(window.WORKLOG_API));
+  const PASS_KEY = 'worklog.pass';
+  let pass = '';
+  try { pass = localStorage.getItem(PASS_KEY) || ''; } catch (_) {}
+  let lastPull = null, pulling = false, pageUrl = '';
+
+  async function api(path, init = {}) {
+    const r = await fetch(window.WORKLOG_API + path, { ...init, headers: { 'X-Pass': encodeURIComponent(pass), 'Content-Type': 'application/json' } });
+    if (r.status === 401) { showLock('비밀번호가 맞지 않아요'); throw new Error('auth'); }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok && r.status !== 409) throw new Error(d.error || '서버 오류');
+    return d;
+  }
+  async function pull(quiet) {
+    if (!pass) { showLock(); return; }
+    if (pulling) return;
+    pulling = true;
+    if (!quiet) $('#syncInfo').innerHTML = '<span class="spin">↻</span> 불러오는 중';
+    try {
+      const d = await api('/memo');
+      pageUrl = d.pageUrl; $('#btnNotion').href = pageUrl;
+      lastPull = new Date();
+      if (d.text !== state.text) setText(d.text);
+      syncInfo();
+    } catch (err) {
+      if (err.message !== 'auth') $('#syncInfo').textContent = '불러오기 실패 (인터넷 확인) · 저장된 내용 표시 중';
+    } finally { pulling = false; }
+  }
+  function syncInfo() {
+    if (!lastPull) return;
+    $('#syncInfo').textContent = `${lastPull.getHours()}:${String(lastPull.getMinutes()).padStart(2, '0')} 동기화`;
+    $('#savedState').textContent = '노션 내용 (읽기 전용)';
+  }
+  function showLock(err) {
+    $('#lock').hidden = false;
+    $('#lockErr').textContent = err || '';
+    setTimeout(() => $('#lockPass').focus(), 50);
   }
 
   function goEdit(lineIndex) {
@@ -452,7 +506,7 @@
     if (!b) return;
     if (b.dataset.pay != null) changeStatus(+b.dataset.pay, '결제완료');
     else if (b.dataset.unpay != null) changeStatus(+b.dataset.unpay, '미결');
-    else if (b.dataset.edit != null) goEdit(state.entries[+b.dataset.edit].lineIndex);
+    else if (b.dataset.edit != null) { if (SYNC && pageUrl) window.open(pageUrl, '_blank'); else goEdit(state.entries[+b.dataset.edit].lineIndex); }
     else if (b.dataset.go != null) {
       tip.hidden = true;
       switchTab('list');
@@ -462,7 +516,7 @@
       renderAll();
       const el = $('#job-' + b.dataset.go);
       if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); }
-    } else if (b.classList.contains('prow')) goEdit(+b.dataset.line);
+    } else if (b.classList.contains('prow') && !SYNC) goEdit(+b.dataset.line);
   });
 
   $$('.tabs button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
@@ -485,6 +539,7 @@
     memoTimer = setTimeout(() => setText(e.target.value, { from: 'memo' }), 350);
   });
 
+  $('#btnExportL').addEventListener('click', () => $('#btnExport').click());
   $('#btnExport').addEventListener('click', () => {
     const blob = new Blob([state.text], { type: 'text/plain;charset=utf-8' });
     const a = document.createElement('a');
@@ -527,7 +582,33 @@
   // 시작
   const saved = storage.get();
   setText(saved || '', { save: false });
-  let startTab = saved ? 'dash' : 'memo';
+  let startTab = saved || SYNC ? 'dash' : 'memo';
   try { startTab = sessionStorage.getItem('worklog.tab') || startTab; } catch (_) {}
   switchTab(startTab);
+  if (SYNC) {
+    document.body.classList.add('sync');
+    $('#memo').readOnly = true;
+    $('#lockForm').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      pass = $('#lockPass').value.trim();
+      $('#lockErr').textContent = '확인 중…';
+      try {
+        const d = await api('/memo');
+        try { localStorage.setItem(PASS_KEY, pass); } catch (_) {}
+        $('#lock').hidden = true; $('#lockPass').value = '';
+        pageUrl = d.pageUrl; $('#btnNotion').href = pageUrl; lastPull = new Date();
+        setText(d.text); syncInfo();
+      } catch (err) { if (err.message !== 'auth') $('#lockErr').textContent = '서버에 연결할 수 없어요'; }
+    });
+    $('#btnLock').addEventListener('click', ev => {
+      ev.preventDefault();
+      try { localStorage.removeItem(PASS_KEY); localStorage.removeItem(KEY); } catch (_) {}
+      pass = ''; setText('', { save: false }); showLock();
+    });
+    $('#btnRefresh').addEventListener('click', () => pull());
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(true); });
+    window.addEventListener('focus', () => pull(true));
+    setInterval(() => { if (!document.hidden) pull(true); }, 30000);
+    pull();
+  }
 })();

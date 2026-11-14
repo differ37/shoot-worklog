@@ -89,11 +89,16 @@
       <div class="card memo-card">
         <div class="card-h">
           <h2>메모</h2>
-          <span class="saved" id="savedState">저장됨</span>
+          <span class="saved" id="savedState"></span>
         </div>
         <textarea id="memo" spellcheck="false" placeholder="메모장에 적어둔 업무일지를 그대로 붙여넣으세요.&#10;&#10;9/14(월)미결&#10;KUW//iphone18 x SDF&#10;하주영 김기훈&#10;14:용인공간(60) 7집29반종&#10;010-0000-0000 김OO PD"></textarea>
-        <div class="memo-actions">
-          <button id="btnExport">메모 .txt로 저장</button>
+        <div class="memo-actions sync-only">
+          <a class="btn btn-pay" id="btnNotion" href="#" target="_blank" rel="noopener">노션에서 적기 ↗</a>
+          <button id="btnRefresh">↻ 새로고침</button>
+          <button class="ghost" id="btnExport">.txt 백업</button>
+        </div>
+        <div class="memo-actions local-only">
+          <button id="btnExportL">메모 .txt로 저장</button>
           <label class="btn">.txt 불러오기<input type="file" id="fileIn" accept=".txt,text/plain" hidden></label>
           <button class="ghost" id="btnSample">예시 넣어보기</button>
         </div>
@@ -126,12 +131,25 @@ liminal/TWS-내 이름을 불러줘  ← 제작사/작품 (// 도 OK)
 </main>
 
 <footer class="foot">
-  메모는 이 브라우저에만 저장돼요(서버로 전송되지 않음). 다른 기기에서 보려면 <b>메모 .txt로 저장</b> 후 불러오세요.
+  <span class="sync-only">노션 페이지와 연결됨 · <span id="syncInfo"></span> · <a href="#" id="btnLock">잠그기</a></span>
+  <span class="local-only">메모는 이 브라우저에만 저장돼요. 다른 기기에서 보려면 <b>메모 .txt로 저장</b> 후 불러오세요.</span>
 </footer>
+
+<div id="lock" class="lock" hidden>
+  <form class="lock-box" id="lockForm">
+    <div class="logo">🎬</div>
+    <h2>촬영 업무일지</h2>
+    <p class="muted">비밀번호를 입력하세요</p>
+    <input type="password" id="lockPass" autocomplete="current-password" inputmode="text" required>
+    <button class="btn-pay" type="submit">열기</button>
+    <p class="err" id="lockErr"></p>
+  </form>
+</div>
 
 <div id="tip" class="tip" role="tooltip" hidden></div>
 <div id="toast" class="toast" hidden></div>
 
+<script src="config.js"></script>
 <script src="parser.js"></script>
 <script src="app.js"></script>
 </body>

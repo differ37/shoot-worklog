@@ -1,0 +1,8 @@
+name = "shoot-worklog"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+PAGE_ID = "4185f4db465081ae9e43d426e3513eea"
+ALLOWED_ORIGINS = "https://differ37.github.io,http://localhost:8790"
