@@ -2,3 +2,4 @@ worker/.dev.vars
 .wrangler/
 worker/.wrangler/
 node_modules/
+CLAUDE.md
