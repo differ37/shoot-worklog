@@ -94,7 +94,8 @@ export default {
     const url = new URL(req.url);
     let pass = req.headers.get('X-Pass') || '';
     try { pass = decodeURIComponent(pass); } catch (_) {}
-    if (!env.PASSCODE || pass !== env.PASSCODE) {
+    const norm = v => String(v || '').normalize('NFC').trim().toLowerCase();
+    if (!env.PASSCODE || norm(pass) !== norm(env.PASSCODE)) {
       await new Promise(r => setTimeout(r, 400));
       return json({ error: 'auth' }, 401, h);
     }

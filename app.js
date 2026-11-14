@@ -590,7 +590,7 @@
     $('#memo').readOnly = true;
     $('#lockForm').addEventListener('submit', async ev => {
       ev.preventDefault();
-      pass = $('#lockPass').value.trim();
+      pass = $('#lockPass').value.normalize('NFC').trim();
       $('#lockErr').textContent = '확인 중…';
       try {
         const d = await api('/memo');
